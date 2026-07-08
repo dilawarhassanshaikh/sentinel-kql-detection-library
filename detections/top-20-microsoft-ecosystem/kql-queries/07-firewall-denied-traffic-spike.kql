@@ -1,0 +1,39 @@
+// ============================================================================
+// FILE: 07-firewall-denied-traffic-spike.kql
+// CATEGORY: Network - Perimeter Defense
+// DATA SOURCE: AzureDiagnostics (Azure Firewall)
+// DESCRIPTION: Detects a spike in outbound connections denied by Azure
+//              Firewall from a single source
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Spike in Denied Outbound Connections
+// Description: Identifies hosts generating an unusually high number of
+//              firewall-denied outbound connection attempts
+// Use Case: Detect malware attempting C2 callbacks or data exfiltration that
+//           is being blocked by egress filtering, or automated scanning
+// MITRE ATT&CK: T1071 - Application Layer Protocol, T1595 - Active Scanning
+// Severity: Medium
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com, afw-contoso-prod
+// ============================================================================
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where ResourceType == "AZUREFIREWALLS"
+| where Category == "AzureFirewallNetworkRule"
+| where msg_s has "Deny"
+| parse msg_s with Protocol " request from " SourceIP ":" SourcePort " to " DestinationIP ":" DestinationPort *
+| summarize
+    DeniedCount = count(),
+    Destinations = make_set(DestinationIP, 50)
+    by SourceIP
+| where DeniedCount > 100
+| order by DeniedCount desc
+
+// Expected Output: Internal source IP, count of denied connections, and the
+// set of destination IPs it attempted to reach
+// Common False Positives: Misconfigured application with a stale/incorrect
+// destination endpoint retrying continuously
+// Tuning: Exclude known noisy hosts already under investigation; correlate
+// destination IPs against threat intelligence feeds to prioritize

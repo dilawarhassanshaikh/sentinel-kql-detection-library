@@ -1,0 +1,34 @@
+// ============================================================================
+// FILE: 12-mde-encoded-powershell-execution.kql
+// CATEGORY: Microsoft Defender for Endpoint - Execution
+// DATA SOURCE: DeviceProcessEvents
+// DESCRIPTION: Detects obfuscated PowerShell execution captured by
+//              Microsoft Defender for Endpoint
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Encoded/Obfuscated PowerShell Execution (MDE)
+// Description: Flags PowerShell processes with base64-encoded or otherwise
+//              obfuscated command lines observed via Defender for Endpoint
+// Use Case: Detect fileless malware, LOLBin abuse, and post-exploitation
+//           tooling on managed devices
+// MITRE ATT&CK: T1059.001 - PowerShell, T1027 - Obfuscated Files or Information
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+DeviceProcessEvents
+| where TimeGenerated > ago(1h)
+| where FileName in~ ("powershell.exe", "pwsh.exe")
+| where ProcessCommandLine has_any ("-enc", "-EncodedCommand", "FromBase64String", "-nop -w hidden")
+| project TimeGenerated, DeviceName, AccountName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessAccountName
+| order by TimeGenerated desc
+
+// Expected Output: Device (e.g. CONTOSO-LT-0451), account, decoded/raw
+// command line, and the parent process that launched PowerShell
+// Common False Positives: RMM tools, patch-management agents, and DSC
+// configurations that legitimately pass encoded payloads
+// Tuning: Allow-list known-good management agents by
+// InitiatingProcessFileName; pipe matches to a base64-decode step for
+// faster triage

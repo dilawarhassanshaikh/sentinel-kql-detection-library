@@ -1,0 +1,38 @@
+// ============================================================================
+// FILE: 05-sql-bruteforce-login.kql
+// CATEGORY: Azure Platform - Database Security
+// DATA SOURCE: AzureDiagnostics (Azure SQL Database)
+// DESCRIPTION: Detects brute-force login attempts against an Azure SQL
+//              logical server
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Brute Force Against Azure SQL Server
+// Description: Identifies a high volume of failed SQL authentication
+//              attempts from one or few source IPs against a SQL server
+// Use Case: Detect credential-guessing attacks against internet-facing
+//           Azure SQL endpoints
+// MITRE ATT&CK: T1110 - Brute Force
+// Severity: High
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com, sql-contoso-prod.database.windows.net
+// ============================================================================
+AzureDiagnostics
+| where TimeGenerated > ago(1h)
+| where Category == "SQLSecurityAuditEvents"
+| where action_name_s in ("DATABASE AUTHENTICATION FAILED", "LOGIN FAILED")
+| summarize
+    FailedLogins = count(),
+    Logins = make_set(server_principal_name_s, 20),
+    Databases = make_set(database_name_s)
+    by client_ip_s, Resource
+| where FailedLogins > 15
+| order by FailedLogins desc
+
+// Expected Output: Source IP, Azure SQL server name (sql-contoso-prod),
+// failed login count, attempted login names and target databases
+// Common False Positives: Misconfigured application connection strings
+// retrying with stale credentials after a password rotation
+// Tuning: Correlate with successful logins immediately after (see Query 09
+// pattern) to prioritize accounts that eventually succeeded

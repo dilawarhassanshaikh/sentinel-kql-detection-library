@@ -1,0 +1,36 @@
+// ============================================================================
+// FILE: 06-nsg-internal-port-scan.kql
+// CATEGORY: Network - Traffic Analysis
+// DATA SOURCE: AzureNetworkAnalytics_CL (NSG Flow Logs)
+// DESCRIPTION: Detects internal port-scanning behavior from NSG flow logs
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Internal Port Scanning via NSG Flow Logs
+// Description: Flags source hosts that contact an unusually large number of
+//              distinct destination ports across the virtual network
+// Use Case: Detect lateral movement reconnaissance after initial compromise
+//           of a VM inside a contoso VNet
+// MITRE ATT&CK: T1046 - Network Service Discovery
+// Severity: Medium
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com, vnet-contoso-prod
+// ============================================================================
+AzureNetworkAnalytics_CL
+| where TimeGenerated > ago(1h)
+| where FlowType_s == "IntraVNet" or FlowType_s == "InterVNet"
+| summarize
+    DistinctPorts = dcount(DestPort_d),
+    DistinctHosts = dcount(DestIP_s),
+    Ports = make_set(DestPort_d, 50)
+    by SrcIP_s, VirtualNetwork_s
+| where DistinctPorts > 25
+| order by DistinctPorts desc
+
+// Expected Output: Source IP inside vnet-contoso-prod, count of distinct
+// destination ports/hosts probed, and the port list
+// Common False Positives: Vulnerability scanners (e.g. Qualys, Nessus) or
+// service discovery tools running legitimate internal scans
+// Tuning: Allow-list known scanner IP ranges and monitoring subnets;
+// increase the DistinctPorts threshold in dense microservice environments

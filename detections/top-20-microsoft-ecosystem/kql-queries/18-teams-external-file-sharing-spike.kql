@@ -1,0 +1,38 @@
+// ============================================================================
+// FILE: 18-teams-external-file-sharing-spike.kql
+// CATEGORY: Microsoft 365 - Teams
+// DATA SOURCE: OfficeActivity
+// DESCRIPTION: Detects a spike in files shared from Microsoft Teams to
+//              external domains
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: External Domain File Sharing Spike (Teams)
+// Description: Flags users sharing an unusually high number of files or
+//              links with recipients outside the contoso.com tenant via
+//              Teams-backed SharePoint sites
+// Use Case: Detect data leakage through Teams channel/chat file sharing to
+//           external guests or unauthorized domains
+// MITRE ATT&CK: T1567 - Exfiltration Over Web Service
+// Severity: Medium
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+OfficeActivity
+| where TimeGenerated > ago(24h)
+| where RecordType == "SharePointFileOperation"
+| where Operation in ("SharingSet", "AnonymousLinkCreated", "SecureLinkCreated")
+| where Site_Url has "teams"
+| extend TargetUserOrGroupName = tostring(TargetUserOrGroupName)
+| where TargetUserOrGroupName !endswith "@contoso.com" and isnotempty(TargetUserOrGroupName)
+| summarize ShareCount = count(), Recipients = make_set(TargetUserOrGroupName, 20) by UserId
+| where ShareCount > 15
+| order by ShareCount desc
+
+// Expected Output: User (e.g. carol@contoso.com), count of external shares,
+// and the external recipient domains/addresses
+// Common False Positives: Sanctioned collaboration with external
+// contractors or partner organizations via guest access
+// Tuning: Allow-list approved partner domains configured in Entra ID
+// B2B collaboration settings; alert only on anonymous/"anyone" links

@@ -7,6 +7,7 @@ A collection of KQL (Kusto Query Language) detection and hunting queries for Mic
 | Data Source | Description |
 |---|---|
 | [Entra ID](detections/entra-id/README.md) | Authentication monitoring, suspicious activities, privileged access, account management, conditional access, risky sign-ins, and application/service principal activity. Each query maps to MITRE ATT&CK techniques with severity and false-positive guidance. |
+| [Top 20 — Microsoft Ecosystem](detections/top-20-microsoft-ecosystem/README.md) | A curated cross-product set spanning Azure infrastructure, network telemetry, Windows endpoints, Microsoft Defender for Endpoint, Microsoft 365, Defender for Cloud Apps, and Defender for Identity. Includes sample output mockups for each query. |
 
 ## Usage
 
