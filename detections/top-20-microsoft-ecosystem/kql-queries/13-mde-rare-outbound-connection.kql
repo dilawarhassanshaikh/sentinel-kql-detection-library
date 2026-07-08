@@ -1,0 +1,35 @@
+// ============================================================================
+// FILE: 13-mde-rare-outbound-connection.kql
+// CATEGORY: Microsoft Defender for Endpoint - Command and Control
+// DATA SOURCE: DeviceNetworkEvents
+// DESCRIPTION: Detects outbound connections to uncommon ports/destinations
+//              rarely seen in the environment
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Rare Outbound Connection to Uncommon Port/IP
+// Description: Identifies devices connecting to remote IPs/ports that are
+//              seen from very few other devices in the estate, a signal of
+//              C2 beaconing
+// Use Case: Detect compromised endpoints communicating with attacker
+//           infrastructure
+// MITRE ATT&CK: T1071 - Application Layer Protocol, T1571 - Non-Standard Port
+// Severity: Medium
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+DeviceNetworkEvents
+| where TimeGenerated > ago(1h)
+| where ActionType == "ConnectionSuccess"
+| where RemotePort !in (80, 443, 25, 53, 3389)
+| summarize DeviceCount = dcount(DeviceName), Devices = make_set(DeviceName, 10) by RemoteIP, RemotePort
+| where DeviceCount <= 2
+| order by DeviceCount asc
+
+// Expected Output: Remote IP/port pair and the small set of devices
+// (e.g. CONTOSO-SRV-07) that connected to it
+// Common False Positives: New but legitimate SaaS/vendor integrations,
+// niche internal tooling using non-standard ports
+// Tuning: Join against threat intelligence IP reputation; exclude known
+// internal service ports (e.g. custom app backends) via an allow-list

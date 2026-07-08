@@ -1,0 +1,40 @@
+// ============================================================================
+// FILE: 15-mde-lateral-movement-multiple-logons.kql
+// CATEGORY: Microsoft Defender for Endpoint - Lateral Movement
+// DATA SOURCE: DeviceLogonEvents
+// DESCRIPTION: Detects a single account logging onto an unusually high
+//              number of distinct devices in a short window
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Lateral Movement via Multiple Host Logons
+// Description: Flags accounts authenticating to many distinct devices in a
+//              short time span, a common pattern for lateral movement using
+//              stolen credentials
+// Use Case: Detect an attacker pivoting across the estate after initial
+//           compromise
+// MITRE ATT&CK: T1021 - Remote Services, T1078 - Valid Accounts
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+DeviceLogonEvents
+| where TimeGenerated > ago(1h)
+| where ActionType == "LogonSuccess"
+| where isnotempty(AccountName)
+| summarize
+    DeviceCount = dcount(DeviceName),
+    Devices = make_set(DeviceName, 20),
+    LogonTypes = make_set(LogonType)
+    by AccountName
+| where DeviceCount > 8
+| order by DeviceCount desc
+
+// Expected Output: Account name (e.g. CONTOSO\svc-deploy), count of
+// distinct devices logged into, and the device/logon-type list
+// Common False Positives: IT support and helpdesk accounts, RMM/patch
+// deployment service accounts that legitimately touch many hosts
+// Tuning: Exclude known helpdesk and automation accounts; weight remote
+// interactive (Type 10) and network (Type 3) logons higher than expected
+// service logons
