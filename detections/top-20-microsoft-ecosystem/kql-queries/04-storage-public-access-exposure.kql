@@ -1,0 +1,39 @@
+// ============================================================================
+// FILE: 04-storage-public-access-exposure.kql
+// CATEGORY: Azure Platform - Data Protection
+// DATA SOURCE: StorageBlobLogs
+// DESCRIPTION: Detects anonymous/public reads against an Azure Storage
+//              blob container
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Anonymous/Public Access to Storage Container
+// Description: Flags successful anonymous (unauthenticated) read requests
+//              against blob storage, which indicates a container or blob is
+//              publicly exposed
+// Use Case: Catch accidental or malicious exposure of sensitive blob data
+// MITRE ATT&CK: T1530 - Data from Cloud Storage
+// Severity: Critical
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com, stcontosoprod01
+// ============================================================================
+StorageBlobLogs
+| where TimeGenerated > ago(24h)
+| where AuthenticationType == "Anonymous"
+| where StatusCode startswith "2"
+| where OperationName in ("GetBlob", "ListBlobs")
+| summarize
+    RequestCount = count(),
+    Objects = make_set(Uri, 50),
+    SourceIPs = make_set(CallerIpAddress)
+    by AccountName, RequesterObjectId
+| order by RequestCount desc
+
+// Expected Output: Storage account (stcontosoprod01), anonymous request
+// count, blob URIs accessed, and source IP addresses
+// Common False Positives: Intentionally public static-website containers
+// (e.g. $web) or CDN-fronted public assets
+// Tuning: Exclude storage accounts/containers explicitly designated public
+// in an allow-list; alert only on containers tagged "confidential" or
+// "internal"

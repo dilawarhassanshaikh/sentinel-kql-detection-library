@@ -1,0 +1,38 @@
+// ============================================================================
+// FILE: 14-mde-mass-file-modification-ransomware.kql
+// CATEGORY: Microsoft Defender for Endpoint - Impact
+// DATA SOURCE: DeviceFileEvents
+// DESCRIPTION: Detects mass file rename/modification activity consistent
+//              with ransomware encryption behavior
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Mass File Modification Consistent with Ransomware
+// Description: Flags a single process on a single device renaming or
+//              modifying an abnormally large number of files in a short
+//              window
+// Use Case: Early detection of ransomware encrypting user/shared files
+// MITRE ATT&CK: T1486 - Data Encrypted for Impact
+// Severity: Critical
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+DeviceFileEvents
+| where TimeGenerated > ago(15m)
+| where ActionType in ("FileRenamed", "FileModified")
+| summarize
+    FileCount = count(),
+    DistinctExtensions = dcount(FileName),
+    SampleFiles = make_set(FileName, 20)
+    by DeviceName, InitiatingProcessFileName, InitiatingProcessAccountName
+| where FileCount > 200
+| order by FileCount desc
+
+// Expected Output: Device, offending process (e.g. an unrecognized
+// binary), account, and count of files touched in 15 minutes
+// Common False Positives: Legitimate bulk operations - antivirus full
+// scans with remediation, backup/sync clients, file format migration jobs
+// Tuning: Exclude known backup/sync agents by process name; correlate with
+// file-extension-change patterns (e.g. many files renamed to the same new
+// extension) for higher-confidence alerting

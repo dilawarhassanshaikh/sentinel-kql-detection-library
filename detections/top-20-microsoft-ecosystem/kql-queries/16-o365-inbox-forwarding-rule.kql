@@ -1,0 +1,38 @@
+// ============================================================================
+// FILE: 16-o365-inbox-forwarding-rule.kql
+// CATEGORY: Microsoft 365 - Exchange Online
+// DATA SOURCE: OfficeActivity
+// DESCRIPTION: Detects creation of suspicious inbox forwarding or redirect
+//              rules in Exchange Online
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Suspicious Inbox Forwarding Rule Creation
+// Description: Flags new mailbox rules that forward or redirect mail,
+//              especially to external domains
+// Use Case: Detect BEC (Business Email Compromise) persistence, where an
+//           attacker sets up silent mail forwarding after phishing a
+//           mailbox
+// MITRE ATT&CK: T1114.003 - Email Forwarding Rule
+// Severity: High
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+OfficeActivity
+| where TimeGenerated > ago(24h)
+| where Operation in ("New-InboxRule", "Set-InboxRule", "New-TransportRule")
+| extend Parameters = parse_json(Parameters)
+| mv-expand Parameters
+| where Parameters.Name in ("ForwardTo", "RedirectTo", "ForwardAsAttachmentTo")
+| extend ForwardTarget = tostring(Parameters.Value)
+| where ForwardTarget !endswith "@contoso.com"
+| project TimeGenerated, UserId, ClientIP, Operation, ForwardTarget
+| order by TimeGenerated desc
+
+// Expected Output: Mailbox owner (e.g. alice@contoso.com), client IP,
+// rule operation, and the external forwarding address discovered
+// Common False Positives: Employees legitimately forwarding mail to a
+// personal account or an approved partner domain
+// Tuning: Maintain an allow-list of approved partner/vendor domains;
+// correlate with recent risky sign-ins on the same mailbox for priority

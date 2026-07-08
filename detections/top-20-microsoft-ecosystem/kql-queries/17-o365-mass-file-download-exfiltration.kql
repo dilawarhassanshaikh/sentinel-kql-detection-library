@@ -1,0 +1,38 @@
+// ============================================================================
+// FILE: 17-o365-mass-file-download-exfiltration.kql
+// CATEGORY: Microsoft 365 - SharePoint & OneDrive
+// DATA SOURCE: OfficeActivity
+// DESCRIPTION: Detects mass file download activity from SharePoint Online
+//              or OneDrive for Business consistent with data exfiltration
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Mass File Download Consistent with Exfiltration
+// Description: Flags a single user downloading or syncing an abnormally
+//              large number of files in a short window
+// Use Case: Detect data staging/exfiltration by a compromised account or a
+//           departing/insider-risk employee
+// MITRE ATT&CK: T1530 - Data from Cloud Storage, T1030 - Data Transfer Size Limits
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com, contoso.sharepoint.com
+// ============================================================================
+OfficeActivity
+| where TimeGenerated > ago(1h)
+| where RecordType in ("SharePointFileOperation", "OneDrive")
+| where Operation in ("FileDownloaded", "FileSyncDownloadedFull")
+| summarize
+    DownloadCount = count(),
+    Sites = make_set(SiteUrl, 10),
+    SampleFiles = make_set(SourceFileName, 20)
+    by UserId, ClientIP
+| where DownloadCount > 100
+| order by DownloadCount desc
+
+// Expected Output: User (e.g. bob@contoso.com), source IP, download count,
+// and the SharePoint/OneDrive sites/files involved
+// Common False Positives: Local sync client re-indexing after a device
+// migration, legitimate bulk export by a data/reporting team
+// Tuning: Exclude known migration windows and reporting service accounts;
+// weight downloads from unmanaged/unrecognized devices higher

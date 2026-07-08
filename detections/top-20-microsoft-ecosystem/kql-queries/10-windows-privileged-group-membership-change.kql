@@ -1,0 +1,32 @@
+// ============================================================================
+// FILE: 10-windows-privileged-group-membership-change.kql
+// CATEGORY: Windows Endpoint - Privilege Escalation
+// DATA SOURCE: SecurityEvent (Windows Security Event Log)
+// DESCRIPTION: Detects new members added to privileged local or domain
+//              groups
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: New Member Added to Privileged Group
+// Description: Flags additions to Domain Admins, Enterprise Admins, or
+//              local Administrators groups
+// Use Case: Detect privilege escalation via group membership manipulation
+// MITRE ATT&CK: T1098 - Account Manipulation, T1078.003 - Local Accounts
+// Severity: Critical
+// False Positive Rate: Low
+// Example Tenant: contoso.local domain
+// ============================================================================
+SecurityEvent
+| where TimeGenerated > ago(24h)
+| where EventID in (4728, 4732, 4756) // added to global/local/universal security group
+| where TargetUserName has_any ("Domain Admins", "Enterprise Admins", "Administrators", "Schema Admins")
+| project TimeGenerated, Computer, SubjectAccount, MemberName, TargetUserName, EventID
+| order by TimeGenerated desc
+
+// Expected Output: Timestamp, domain controller (CONTOSO-DC01), who made
+// the change, the account added, and which privileged group
+// Common False Positives: Approved change-tickets for new admin onboarding
+// Tuning: Cross-reference against a change-management/ticketing system to
+// auto-suppress pre-approved additions; alert only on additions made
+// outside of a change window

@@ -1,0 +1,42 @@
+// ============================================================================
+// FILE: 09-windows-failed-logon-then-success.kql
+// CATEGORY: Windows Endpoint - Authentication
+// DATA SOURCE: SecurityEvent (Windows Security Event Log)
+// DESCRIPTION: Detects a Windows account with many failed logons (4625)
+//              followed by a successful logon (4624)
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Successful Windows Logon After Repeated Failures
+// Description: Correlates failed and successful logon events per account to
+//              highlight likely brute-force success
+// Use Case: Detect password-guessing attacks against domain-joined servers
+//           and workstations (e.g. CONTOSO-DC01, CONTOSO-FS02)
+// MITRE ATT&CK: T1110 - Brute Force, T1110.001 - Password Guessing
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.local domain
+// ============================================================================
+let Failed = SecurityEvent
+    | where TimeGenerated > ago(2h)
+    | where EventID == 4625
+    | summarize FailedCount = count(), FirstFailure = min(TimeGenerated) by Account, Computer;
+let Success = SecurityEvent
+    | where TimeGenerated > ago(2h)
+    | where EventID == 4624
+    | project Account, Computer, LogonTime = TimeGenerated;
+Failed
+| where FailedCount >= 5
+| join kind=inner (Success) on Account, Computer
+| where LogonTime > FirstFailure
+| summarize SuccessTime = min(LogonTime), FailedCount = max(FailedCount) by Account, Computer, FirstFailure
+| extend MinutesToSuccess = datetime_diff('minute', SuccessTime, FirstFailure)
+| order by FailedCount desc
+
+// Expected Output: Domain account (e.g. CONTOSO\svc-backup), host (e.g.
+// CONTOSO-FS02), failed attempt count, and time-to-success
+// Common False Positives: Users who mistype passwords before eventually
+// succeeding, service accounts with stale cached credentials
+// Tuning: Raise FailedCount threshold for shared kiosk/terminal-server
+// hosts where retries are common

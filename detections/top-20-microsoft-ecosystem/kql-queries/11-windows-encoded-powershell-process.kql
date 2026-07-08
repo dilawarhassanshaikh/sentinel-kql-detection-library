@@ -1,0 +1,34 @@
+// ============================================================================
+// FILE: 11-windows-encoded-powershell-process.kql
+// CATEGORY: Windows Endpoint - Execution
+// DATA SOURCE: SecurityEvent (Windows Security Event Log, 4688)
+// DESCRIPTION: Detects PowerShell processes launched with encoded or
+//              obfuscated command-line arguments
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Suspicious Encoded PowerShell Command Line
+// Description: Flags process creation events for powershell.exe using
+//              -EncodedCommand, -enc, or similar obfuscation flags
+// Use Case: Detect fileless malware and living-off-the-land attack
+//           techniques
+// MITRE ATT&CK: T1059.001 - PowerShell, T1027 - Obfuscated Files or Information
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.local domain
+// ============================================================================
+SecurityEvent
+| where TimeGenerated > ago(1h)
+| where EventID == 4688
+| where NewProcessName has "powershell.exe" or NewProcessName has "pwsh.exe"
+| where CommandLine has_any ("-enc", "-EncodedCommand", "-e ", "-nop", "-w hidden", "-windowstyle hidden")
+| project TimeGenerated, Computer, Account, NewProcessName, CommandLine, ParentProcessName
+| order by TimeGenerated desc
+
+// Expected Output: Host (e.g. CONTOSO-WVD03), account, full command line,
+// and the parent process that spawned PowerShell
+// Common False Positives: Legitimate configuration-management tooling
+// (DSC, Intune scripts) that pass base64-encoded payloads by design
+// Tuning: Allow-list known management-tool parent processes (e.g. the
+// Intune Management Extension); decode -enc payloads for triage
