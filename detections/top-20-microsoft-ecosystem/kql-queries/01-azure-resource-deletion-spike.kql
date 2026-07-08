@@ -1,0 +1,39 @@
+// ============================================================================
+// FILE: 01-azure-resource-deletion-spike.kql
+// CATEGORY: Azure Platform - Resource Management
+// DATA SOURCE: AzureActivity
+// DESCRIPTION: Detects an unusual spike in resource or role deletions in a
+//              short window, consistent with sabotage or anti-forensic activity
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Spike in Azure Resource/Role Deletions
+// Description: Flags identities deleting an abnormally high number of Azure
+//              resources or role assignments within a short time window
+// Use Case: Detect destructive activity following account compromise, or an
+//           insider attempting to disrupt production/DR resources
+// MITRE ATT&CK: T1485 - Data Destruction, T1531 - Account Access Removal
+// Severity: High
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+AzureActivity
+| where TimeGenerated > ago(1h)
+| where OperationNameValue has_any ("DELETE", "Microsoft.Authorization/roleAssignments/delete")
+| where ActivityStatusValue == "Success"
+| summarize
+    DeleteCount = count(),
+    Resources = make_set(_ResourceId, 20),
+    Operations = make_set(OperationNameValue, 10),
+    IPAddresses = make_set(CallerIpAddress)
+    by Caller, SubscriptionId
+| where DeleteCount > 10
+| order by DeleteCount desc
+
+// Expected Output: Caller (e.g. alice@contoso.com), subscription, count of
+// deletes, the resources touched, and source IP addresses
+// Common False Positives: Scheduled decommission scripts, IaC teardown jobs
+// (e.g. Terraform destroy against rg-contoso-dev)
+// Tuning: Allow-list known automation service principals; raise the
+// threshold for subscriptions with frequent ephemeral (dev/test) resources

@@ -1,0 +1,36 @@
+// ============================================================================
+// FILE: 02-privileged-role-assignment-after-hours.kql
+// CATEGORY: Azure Platform - Identity & Access
+// DATA SOURCE: AzureActivity
+// DESCRIPTION: Detects privileged Azure role assignments made outside normal
+//              business hours
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Privileged Role Assignment Outside Business Hours
+// Description: Flags Owner/Contributor/User Access Administrator role
+//              assignments performed outside the tenant's normal working hours
+// Use Case: Detect privilege escalation performed while defenders are less
+//           likely to notice, e.g. overnight or on weekends
+// MITRE ATT&CK: T1098.003 - Additional Cloud Roles
+// Severity: High
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+AzureActivity
+| where TimeGenerated > ago(24h)
+| where OperationNameValue == "MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE"
+| where ActivityStatusValue == "Success"
+| extend HourOfDay = datetime_part("hour", TimeGenerated), DayOfWeek = dayofweek(TimeGenerated)
+| where HourOfDay !between (7 .. 19) or DayOfWeek in (0d, 6d)
+| extend RoleAssignmentProps = parse_json(Properties)
+| project TimeGenerated, Caller, CallerIpAddress, SubscriptionId, _ResourceId, RoleAssignmentProps
+| order by TimeGenerated desc
+
+// Expected Output: Off-hours role assignments with caller (e.g.
+// bob@contoso.com), source IP, and the target resource/scope
+// Common False Positives: Global operations teams working legitimate
+// off-hours shifts, follow-the-sun admin rotations
+// Tuning: Adjust HourOfDay window to match the tenant's actual business
+// hours and time zone; exclude known break-glass or on-call accounts

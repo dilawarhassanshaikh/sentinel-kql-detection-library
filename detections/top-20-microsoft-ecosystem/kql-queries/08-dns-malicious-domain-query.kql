@@ -1,0 +1,42 @@
+// ============================================================================
+// FILE: 08-dns-malicious-domain-query.kql
+// CATEGORY: Network - DNS Security
+// DATA SOURCE: DnsEvents
+// DESCRIPTION: Detects DNS queries to newly observed or known-suspicious
+//              domains
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Query to Newly Observed / Malicious Domain
+// Description: Flags DNS lookups for domains not seen in the environment's
+//              recent history, a common indicator of malware C2 or phishing
+//              infrastructure
+// Use Case: Early detection of compromised hosts beaconing to new
+//           infrastructure
+// MITRE ATT&CK: T1071.004 - DNS, T1568 - Dynamic Resolution
+// Severity: Medium
+// False Positive Rate: Medium
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+let LookbackPeriod = 21d;
+let KnownDomains = DnsEvents
+    | where TimeGenerated between (ago(LookbackPeriod) .. ago(1d))
+    | summarize by Name;
+DnsEvents
+| where TimeGenerated > ago(1d)
+| where Name !in (KnownDomains)
+| where ResponseCode == "0" // NOERROR - resolution succeeded
+| summarize
+    QueryCount = count(),
+    Clients = make_set(ClientIP, 20)
+    by Name
+| where QueryCount > 1
+| order by QueryCount desc
+
+// Expected Output: Newly seen domain name, number of queries, and the
+// client IPs (e.g. workstations in 10.10.20.0/24) that resolved it
+// Common False Positives: Legitimate new SaaS integrations, CDN endpoints
+// with rotating hostnames, first-time visits to new but benign websites
+// Tuning: Cross-reference results against a threat intelligence domain
+// reputation feed before alerting; exclude common CDN/cloud domain suffixes

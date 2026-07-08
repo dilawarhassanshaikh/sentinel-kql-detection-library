@@ -1,0 +1,41 @@
+// ============================================================================
+// FILE: 19-mcas-impossible-travel-mass-download.kql
+// CATEGORY: Microsoft Defender for Cloud Apps
+// DATA SOURCE: CloudAppEvents
+// DESCRIPTION: Detects impossible-travel sign-ins followed by mass
+//              download activity in a sanctioned cloud app
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Impossible Travel with Mass Download from Cloud App
+// Description: Correlates geographically impossible consecutive sign-ins
+//              to a cloud app with a subsequent burst of file downloads
+// Use Case: Detect session-token theft or account takeover being used to
+//           exfiltrate data from a sanctioned SaaS app
+// MITRE ATT&CK: T1078 - Valid Accounts, T1537 - Transfer Data to Cloud Account
+// Severity: Critical
+// False Positive Rate: Low
+// Example Tenant: contoso.onmicrosoft.com
+// ============================================================================
+let Travel = CloudAppEvents
+    | where TimeGenerated > ago(6h)
+    | where ActionType in ("LogIn", "Login")
+    | summarize Countries = make_set(tostring(RawEventData.CountryCode)), CountryCount = dcount(tostring(RawEventData.CountryCode)) by AccountId
+    | where CountryCount >= 2;
+CloudAppEvents
+| where TimeGenerated > ago(6h)
+| where ActionType has "Download"
+| summarize DownloadCount = count() by AccountId, AppDisplayName
+| where DownloadCount > 50
+| join kind=inner (Travel) on AccountId
+| project AccountId, AppDisplayName, DownloadCount, Countries
+| order by DownloadCount desc
+
+// Expected Output: Account (e.g. dave@contoso.com), cloud app name,
+// download count, and the distinct countries the account signed in from
+// Common False Positives: Legitimate VPN/proxy usage, traveling
+// executives, or approved third-party access on their behalf
+// Tuning: Reduce the travel-time-distance threshold using actual
+// impossible-travel logic (distance/time) rather than raw country count;
+// exclude known corporate VPN egress countries

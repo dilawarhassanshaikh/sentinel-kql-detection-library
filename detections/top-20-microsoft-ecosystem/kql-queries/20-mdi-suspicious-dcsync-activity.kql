@@ -1,0 +1,36 @@
+// ============================================================================
+// FILE: 20-mdi-suspicious-dcsync-activity.kql
+// CATEGORY: Microsoft Defender for Identity
+// DATA SOURCE: IdentityDirectoryEvents
+// DESCRIPTION: Detects suspicious directory replication activity
+//              consistent with a DCSync attack
+// LAST UPDATED: July 2026
+// ============================================================================
+
+// ============================================================================
+// Query: Suspicious Directory Replication (DCSync) Activity
+// Description: Flags replication requests (DS-Replication-Get-Changes)
+//              issued by a non-domain-controller account, a hallmark of the
+//              DCSync credential-dumping technique
+// Use Case: Detect attackers with Replicating Directory Changes rights
+//           attempting to dump domain password hashes
+// MITRE ATT&CK: T1003.006 - DCSync
+// Severity: Critical
+// False Positive Rate: Low
+// Example Tenant: contoso.local domain
+// ============================================================================
+IdentityDirectoryEvents
+| where TimeGenerated > ago(1h)
+| where ActionType == "Directory Services replication"
+| where AccountName !endswith "$" // exclude machine accounts of legitimate DCs
+| project TimeGenerated, AccountName, DeviceName, DestinationDeviceName, ActionType, Protocol
+| order by TimeGenerated desc
+
+// Expected Output: Timestamp, the requesting account (e.g.
+// CONTOSO\svc-backup), source device, and target domain controller
+// Common False Positives: Approved backup/AD-recovery tools (e.g. Azure AD
+// Connect, some backup solutions) that legitimately hold replication
+// rights
+// Tuning: Allow-list known service accounts explicitly granted
+// Replicating Directory Changes permissions; alert only on accounts
+// outside that documented list
